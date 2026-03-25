@@ -1,4 +1,4 @@
-#Adapted from CameraWebServer code
+//Adapted from CameraWebServer code
 
 
 #if defined(CAMERA_MODEL_WROVER_KIT)
