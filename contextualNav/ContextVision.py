@@ -4,7 +4,7 @@ import base64
 import cv2
 from openai import OpenAI
 
-stream_url = "http://192.168.1.55/stream"
+stream_url = ""
 model = "gpt-4o-mini"
 check_every_sec = 3
 
@@ -40,12 +40,12 @@ def analyse_frame(frame):
     image_data_url = frame_to_data_url(frame)
 
     response = client.response.create(
-        model=MODEL,
+        model=model,
         input=[
             {
                 "role": "user",
                 "content": [
-                    {"type": "input_text", "text": PROMPT},
+                    {"type": "input_text", "text": prompt},
                     {"type": "input_image", "image_url": image_data_url, "detail": "low"}
                 ]
             }
@@ -53,6 +53,22 @@ def analyse_frame(frame):
     )
 
     return response.output_text.strip()
+
+def draw_text_lines(frame, text):
+    lines = text.splitlines()
+    y = 30
+
+    for line in lines[:3]:
+        cv2.putText(
+            frame,
+            line[:80],
+            (10, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0,255,0),
+            2
+        )
+        y += 30
 
 def main():
     if not os.getenv("OPENAI_API_KEY"):
@@ -65,6 +81,7 @@ def main():
     
     print("Running. Press Q to quit.")
     last_check = 0
+    latest_result = "Scene: Starting...\nHazard: Waiting...\nAction: Waiting..."
 
     while True:
         ok, frame = cap.read()
@@ -89,7 +106,9 @@ def main():
 
             last_check = now
 
-        cv2.imshow("ExGlass Camera", frame)
+        display_frame = frame.copy()
+        draw_text_lines(display_frame, latest_result)
+        cv2.imshow("ExGlass Camera", display_frame)
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
