@@ -7,16 +7,25 @@ from openai import OpenAI
 stream_url = ""
 model = "gpt-4o-mini"
 check_every_sec = 3
+output_file = "latest_navigation.txt"
 
 prompt = """You are an assistive navigation system for a visually impaired user.
 
-Look at this image and give a very short, practical response.
+Analyze this single image from a smart-glasses camera and give immediate, practical navigation information.
+
+Priorities, in order:
+1. Obstacles or hazards directly ahead
+2. Changes in ground level or terrain
+3. Doors, stairs, crossings, people, vehicles, poles, signs, or narrow passages
+4. Useful orientation cues
 
 Rules:
-- Focus only on what matters immediately.
-- Mention obstacles or hazards ahead.
-- Give one clear action.
-- Be brief.
+- Be brief, concrete, and safety-focused.
+- Do not guess if the image is unclear.
+- Do not describe unimportant background details.
+- If nothing important is visible, say that clearly.
+- Focus on what matters in the next few seconds of movement.
+- Set Alert to yes only if there is an immediate hazard or obstacle that needs urgent warning.
 
 Format exactly like this:
 
@@ -39,7 +48,7 @@ def frame_to_data_url(frame):
 def analyse_frame(frame):
     image_data_url = frame_to_data_url(frame)
 
-    response = client.response.create(
+    response = client.responses.create(
         model=model,
         input=[
             {
@@ -58,7 +67,7 @@ def draw_text_lines(frame, text):
     lines = text.splitlines()
     y = 30
 
-    for line in lines[:3]:
+    for line in lines[:4]:
         cv2.putText(
             frame,
             line[:80],
@@ -70,16 +79,19 @@ def draw_text_lines(frame, text):
         )
         y += 30
 
+def save_result(text):
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(text)
+
 def main():
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY not set in environment variable")
     
     cap = cv2.VideoCapture(stream_url)
-
     if not cap.isOpened():
         raise RuntimeError("Could not open ESP32-CAM stream")
     
-    print("Running. Press Q to quit.")
+    print("Running. Press Q to quit. Press S to analyse immediately.")
     last_check = 0
     latest_result = "Scene: Starting...\nHazard: Waiting...\nAction: Waiting..."
 
@@ -91,26 +103,37 @@ def main():
             continue
 
         now = time.time()
+        key = cv2.waitKey(1) & 0xFF
+
+        should_analyse = False
 
         if now - last_check >= check_every_sec:
+            should_analyse = True
+
+        if key == ord("s"):
+            should_analyse = True
+
+        if should_analyse:
             try:
-                result = analyse_frame(frame)
+                latest_result = analyse_frame(frame)
+                save_result(latest_result)
+
                 print("\n---Navigation Update---")
-                print(result)
+                print(latest_result)
 
-                if "Alert: yes" in result:
-                    print("Alert Triggered") #placeholder for buzzer activation 
-
+                if "Alert: yes" in latest_result:
+                    print("Alert Triggered") # placeholder for buzzer activation
             except Exception as e:
                 print("OpenAI request failed:", e)
 
             last_check = now
 
+
         display_frame = frame.copy()
         draw_text_lines(display_frame, latest_result)
         cv2.imshow("ExGlass Camera", display_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        if key == ord("q"):
             break
 
     cap.release()
