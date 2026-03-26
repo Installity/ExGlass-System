@@ -2,7 +2,7 @@ import os
 import base64
 import cv2
 from openai import OpenAI
-
+import textwrap
 
 image_file = "images/test.jpg"
 model = "gpt-4o-mini"
@@ -75,14 +75,22 @@ def draw_text_lines(frame, text):
     lines = text.splitlines()
     y = 30
     font = cv2.FONT_HERSHEY_SIMPLEX
-    font_scale = 0.6
+    font_scale = 0.7
     thickness = 2
+    line_gap = 12
+    max_chars_per_line = 38 # lower = more wrap
+
+    wrapped_lines = []
 
     for line in lines[:4]:
-        shown_line = line[:80]
+        wrapped = textwrap.wrap(line, width=max_chars_per_line)
+        if not wrapped:
+            wrapped = [""]
+        wrapped_lines.extend(wrapped)
 
-        (text_w, text_h), _ = cv2.getTextSize(shown_line, font, font_scale, thickness)
-#needed a background for text
+    for line in wrapped_lines:
+        (text_w, text_h), _ = cv2.getTextSize(line, font, font_scale, thickness)
+
         cv2.rectangle(
             frame,
             (8, y - text_h - 8),
@@ -91,17 +99,17 @@ def draw_text_lines(frame, text):
             -1
         )
 
-
         cv2.putText(
             frame,
-            shown_line,
+            line,
             (10, y),
             font,
             font_scale,
-            (0,255,0),
+            (0, 255, 0),
             thickness
         )
-        y += 35
+
+        y += text_h + line_gap
 
 def save_result(text):
     with open(output_file, "w", encoding="utf-8") as f:
