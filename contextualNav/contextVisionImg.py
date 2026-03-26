@@ -3,6 +3,7 @@ import base64
 import cv2
 from openai import OpenAI
 
+
 image_file = "images/test.jpg"
 model = "gpt-4o-mini"
 output_file = "latest_navigation.txt"
@@ -61,21 +62,46 @@ def analyse_frame(frame):
 
     return response.output_text.strip()
 
+def resize_for_display(frame, max_width=1000, max_height=700):
+    h, w = frame.shape[:2]
+    scale = min(max_width / w, max_height / h, 1.0)
+
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+
+    return cv2.resize(frame, (new_w, new_h))
+
 def draw_text_lines(frame, text):
     lines = text.splitlines()
     y = 30
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.6
+    thickness = 2
 
     for line in lines[:4]:
+        shown_line = line[:80]
+
+        (text_w, text_h), _ = cv2.getTextSize(shown_line, font, font_scale, thickness)
+#needed a background for text
+        cv2.rectangle(
+            frame,
+            (8, y - text_h - 8),
+            (12 + text_w, y + 6),
+            (0, 0, 0),
+            -1
+        )
+
+
         cv2.putText(
             frame,
-            line[:80],
+            shown_line,
             (10, y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
+            font,
+            font_scale,
             (0,255,0),
-            2
+            thickness
         )
-        y += 30
+        y += 35
 
 def save_result(text):
     with open(output_file, "w", encoding="utf-8") as f:
@@ -85,16 +111,22 @@ def main():
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY not set in environment variable")
     
-    if not os.path.exists(image_file):
-        raise FileNotFoundError(f"Could not find image file: {image_file}")
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    image_path = os.path.join(script_dir, image_file)
+    output_path = os.path.join(script_dir, output_file)
+
+    print("Script folder:", script_dir)
+    print("Looking for image at:", image_path)
     
-    frame = cv2.imread(image_file)
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Could not find image file: {image_path}")
+    
+    frame = cv2.imread(image_path)
     if frame is None:
         raise RuntimeError("Could not load image")
     
     
-    print("Running. Press Q to quit. Press S to analyse immediately.")
-    last_check = 0
+    print("Running. Press Q or ESC to quit. Press S to analyse immediately.")
     latest_result = "Scene: Starting...\nHazard: Waiting...\nAction: Waiting..."
 
     try:
@@ -102,6 +134,7 @@ def main():
         save_result(latest_result)
 
         print("\n---Navigation Update---")
+        print(latest_result)
 
         if "Alert: yes" in latest_result:
             print("Alert Triggered") #placeholder for buzzer activation
@@ -109,12 +142,18 @@ def main():
     except Exception as e:
         print("OpenAI request failed:", e)
 
-    while True:
-        display_frame = frame.copy()
-        draw_text_lines(display_frame, latest_result)
-        cv2.imshow("ExGlass Image Analysis", display_frame)
+    window_name = "ExGlass Image Analysis"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
-        key = cv2.waitKey(1) & 0xFF
+    while True:
+        display_frame = resize_for_display(frame.copy(), max_width=1000,max_height=700)
+        draw_text_lines(display_frame, latest_result)
+        cv2.imshow(window_name, display_frame)
+
+        if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+            break
+
+        key = cv2.waitKey(30) & 0xFF
 
         if key == ord("s"):
             try:
@@ -130,7 +169,7 @@ def main():
             except Exception as e:
                 print("OpenAI request failed:", e)
 
-        if key == ord("q"):
+        if key == ord("q") or key == 27:
             break
 
     cv2.destroyAllWindows()
